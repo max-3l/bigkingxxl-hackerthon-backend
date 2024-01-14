@@ -11,3 +11,7 @@ uvicorn server:app --reload
 ```
 
 The server should start at `localhost:8000`.
+
+## Tech Stack
+
+FastAI, faiss, and more :D
