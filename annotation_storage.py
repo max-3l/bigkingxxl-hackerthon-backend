@@ -1,10 +1,11 @@
 import json
 import os
-from pathlib import Path
 import pickle
-from sentence_transformers import util
+from pathlib import Path
+
 import faiss
 import numpy as np
+
 
 class AnnotationStorage:
     def __init__(self, embedding_callback, sentiment_callbac, save_path: Path):
@@ -51,7 +52,7 @@ class AnnotationStorage:
         similarity_indices = ann[0]
 
         similarity_indices = similarity_indices[similarity_indices != -1]
-        
+
         if len(similarity_indices) > 3:
             votes = np.array([self.annotations[i]['num_votes'] for i in similarity_indices]) 
             votes = votes + abs(min(np.min(votes), 0)) + 1

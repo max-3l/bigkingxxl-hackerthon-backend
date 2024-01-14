@@ -1,35 +1,28 @@
+import math
 import os
 import pickle
+import random
+from dataclasses import dataclass, field
+from typing import List
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from annotation_storage import AnnotationStorage
-from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 from pydantic import BaseModel
-import math
-import random
-from dataclasses import dataclass, field
-from typing import Any, List
-import numpy as np
-import json
+from sentence_transformers import SentenceTransformer
+
+from annotation_storage import AnnotationStorage
 
 client = OpenAI(
     organization='org-iDnTJYhL78qGMpGFWY2J5tox',
     api_key='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'
 )
 
-
-
 app = FastAPI()
-
-origins = [
-    "*",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,7 +30,6 @@ app.add_middleware(
 
 def get_embedding(text: str):
     return client.embeddings.create(input = [text.replace('\n', ' ')], model="text-embedding-ada-002").data[0].embedding
-
 
 def get_keyword(text: str):
     query = f"""Task:
@@ -75,7 +67,6 @@ Review:
         return conversion[sentiment]
     else: 
         return 0
-
 
 storage = AnnotationStorage(get_embedding, get_sentiment, '.')
 
