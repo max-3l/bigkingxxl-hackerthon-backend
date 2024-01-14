@@ -10,7 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
 from pydantic import BaseModel
-from sentence_transformers import SentenceTransformer
 
 from annotation_storage import AnnotationStorage
 
@@ -84,6 +83,7 @@ class QueryStorageElement:
     model: str
     response: str = ""
     confidence: List[float] = field(default_factory=list)
+    tokens: List[str] = field(default_factory=list)
     done: bool = False
 
 class QueryStorage:
@@ -119,7 +119,7 @@ def query_model(query: Query, model: str = 'gpt-4'):
 
 @app.get("/query/{queryId}/response")
 def stream_query_model(queryId: int):
-    async def stream_response():
+    def stream_response():
         queryStorageElement = query_storage.get(queryId)
         stream = client.chat.completions.create(
             model=queryStorageElement.model,
@@ -130,6 +130,7 @@ def stream_query_model(queryId: int):
         for chunk in stream:
             if chunk.choices[0].delta.content is not None:
                 queryStorageElement.response += chunk.choices[0].delta.content
+                queryStorageElement.tokens.extend([el.token for el in chunk.choices[0].logprobs.content])
                 queryStorageElement.confidence.extend([el.logprob for el in chunk.choices[0].logprobs.content])
                 yield chunk.choices[0].delta.content
         queryStorageElement.done = True
@@ -147,6 +148,14 @@ def confidence(queryId: int):
     confidence /= len(queryStorageElement.confidence)
     return { 'confidence': confidence }
 
+@app.get("/query/{queryId}/confidence_tokens")
+def confidence_tokens(queryId: int):
+    queryStorageElement = query_storage.get(queryId)
+    if not queryStorageElement.done:
+        raise HTTPException(status_code=404, detail="Query not done yet")
+    print(len(queryStorageElement.confidence), len(queryStorageElement.tokens))
+    return list(map(lambda el: { 'confidence': math.exp(el[0]), 'token': el[1], 'index': el[2] }, zip(queryStorageElement.confidence, queryStorageElement.tokens, range(len(queryStorageElement.confidence)))))
+
 @app.post("/upvote/{index}")
 def upvote(index: int):
     storage.rate_annotation(index, 1)
@@ -162,6 +171,7 @@ def get_annotation(index: int):
 
 @app.get("/get_expertise_models/{query_id}")
 def get_expertise_models(query_id: int):
+    return storage.query_models(query_storage.get(query_id).response)
     models = ['Chat GPT 4', 'Chat GPT 3.5', 'Chat GPT 3.5 (latest)']
     expertise_levels = [round(random.uniform(0.5, 0.96), 2) for _ in range(len(models))]
     return [{'model': model, 'expertise': expertise} for model, expertise in sorted(zip(models, expertise_levels), key=lambda x: x[1], reverse=True)]
@@ -171,4 +181,4 @@ def get_expertise_models(query_id: int):
 def add_annotation(annotation: Annotation):
     query_storage_element = query_storage.get(annotation.query_id)
     response = query_storage_element.response
-    return storage.add_annotation(response, annotation.annotation, get_keyword(annotation.annotation))
+    return storage.add_annotation(response, annotation.annotation, get_keyword(annotation.annotation), query_storage_element.model)
